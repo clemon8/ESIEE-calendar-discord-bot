@@ -15,6 +15,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+import calendar_requests as cr
+
 bot = commands.Bot(command_prefix='/', intents = discord.Intents.all())
 
 
@@ -39,56 +41,32 @@ def clean_calendar_description(description):
     if lines and lines[-1].startswith("ADE: (Exported"):
         description = "\n".join(lines[:-1])
     return description
-    
 
 
-def get_today_events():
+def format_events(events):
+    result = []
+    for event in events:
+            start = event['start']['dateTime']
+            start_hour = (datetime.datetime.strptime(start, '%Y-%m-%dT%H:%M:%S%z')).strftime('%H:%M')
+            end = event['end']['dateTime']
+            end_hour = (datetime.datetime.strptime(end, '%Y-%m-%dT%H:%M:%S%z')).strftime('%H:%M')
+            name = event['summary']
 
-    creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
+            if 'location' in event: classe = event['location']
+            else: classe = ''
 
-    try:
-        service = build('calendar', 'v3', credentials=creds)
+            if 'description' in event: info = clean_calendar_description(event['description'])
+            else: info = ''
 
-        # Call the Calendar API
-        now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
-        today_date = datetime.datetime.strptime(now, '%Y-%m-%dT%H:%M:%S.%fZ')
-        start_of_today = (datetime.datetime(year = today_date.year, month = today_date.month, day = today_date.day, hour = 0, minute = 1)).isoformat()+ 'Z'  # 'Z' indicates UTC time
-        esiee_calendar_id = 'fd5c6ef22a216acd764d766347a1bcf0019ceadb8152137ae0a4744bb7707228@group.calendar.google.com'
-        events_result = service.events().list(calendarId=esiee_calendar_id, timeMin=start_of_today,
-                                              maxResults=5, singleEvents=True,
-                                              orderBy='startTime').execute()
-        events = events_result.get('items', [])
+            value = info + '\n' + classe
 
-        # do stuff here
-        today_events = []
-        for event in events:
-            event_day = (datetime.datetime.strptime(event['start']['dateTime'], '%Y-%m-%dT%H:%M:%S%z')).day
-            today = (datetime.datetime.strptime(now, '%Y-%m-%dT%H:%M:%S.%fZ')).day
+            current_event = {
+                "name": f"{start_hour} - {end_hour}: {name}",
+                "value": value
+            }
 
-            if (event_day == today):
-                today_events.append(event)
-
-        return today_events
-        
-    except HttpError as error:
-        print('An error occurred: %s' % error)
-        return ([])
+            result.append(current_event)
+    return result
 
 # Bot Event
 @bot.event
@@ -112,7 +90,7 @@ async def on_ready():
 @bot.tree.command(name="aujourdhui", description="Qu'est ce qu'on a au menu aujourd'hui?")
 @app_commands.describe()
 
-async def artist_stats(interaction: discord.Interaction):
+async def cours_aujourdhui(interaction: discord.Interaction):
     # Defer to not get kicked out
     await interaction.response.defer(thinking=True)
 
@@ -120,33 +98,19 @@ async def artist_stats(interaction: discord.Interaction):
         # Define the embed
         answer_embed = discord.Embed(color=0xd55044, title="Aujourd'hui", type='rich')
 
-        events = get_today_events()
+        events = cr.get_today_events()
 
         resume = "Pas de cours aujourd'hui 💤"
         if len(events) != 0:
             resume = f"{len(events)} cours aujourd'hui 📚"
         answer_embed.add_field(name="", value=resume, inline=False)
 
-        for event in events:
-            start = event['start']['dateTime']
-            start_hour = (datetime.datetime.strptime(start, '%Y-%m-%dT%H:%M:%S%z')).strftime('%H:%M')
-            end = event['end']['dateTime']
-            end_hour = (datetime.datetime.strptime(end, '%Y-%m-%dT%H:%M:%S%z')).strftime('%H:%M')
-            name = event['summary']
+        formated_events = format_events(events)
+        for formated_event in formated_events:
+            answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
-            if 'location' in event: classe = event['location']
-            else: classe = ''
-
-            if 'description' in event: info = clean_calendar_description(event['description'])
-            else: info = ''
-
-            value = info + '\n' + classe
-
-            answer_embed.add_field(name=f"{start_hour} - {end_hour}: {name}", value=f"{value}", inline=False)
-
-
-        answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API", icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
-
+        answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API",
+        icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
 
         # Adding a button
         view = View()
@@ -154,6 +118,119 @@ async def artist_stats(interaction: discord.Interaction):
         # Sending the message
         await interaction.followup.send(embed=answer_embed, view=view)
 
+    # Error occured in the slash command
+    except Exception as e:
+        print(e)
+        await interaction.followup.send(f"couldn't retrieve the calendar sorry :/", ephemeral=True)
+
+
+# Prochains Cours du jour
+@bot.tree.command(name="prochains_aujourdhui", description="Qu'est ce qu'il nous reste aujourd'hui?")
+@app_commands.describe()
+
+async def prochains_cours_aujourdhui(interaction: discord.Interaction):
+    # Defer to not get kicked out
+    await interaction.response.defer(thinking=True)
+
+    try:
+        # Define the embed
+        answer_embed = discord.Embed(color=0xd55044, title="Prochains Cours Aujourd'hui", type='rich')
+
+        events = cr.get_next_events(istoday= True)
+
+        resume = "Plus de cours aujourd'hui, au dodo! 💤"
+        if len(events) != 0:
+            resume = f"Encore {len(events)} cours aujourd'hui 📚"
+        answer_embed.add_field(name="", value=resume, inline=False)
+
+        formated_events = format_events(events)
+        for formated_event in formated_events:
+            answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
+
+        answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API",
+        icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
+
+        # Adding a button
+        view = View()
+
+        # Sending the message
+        await interaction.followup.send(embed=answer_embed, view=view)
+
+    # Error occured in the slash command
+    except Exception as e:
+        print(e)
+        await interaction.followup.send(f"couldn't retrieve the calendar sorry :/", ephemeral=True)
+
+
+
+# Prochain Cours
+@bot.tree.command(name="prochain_cours", description="Quel est le prochain cours?")
+@app_commands.describe()
+
+async def prochain_cours(interaction: discord.Interaction):
+    # Defer to not get kicked out
+    await interaction.response.defer(thinking=True)
+
+    try:
+        # Define the embed
+        answer_embed = discord.Embed(color=0xd55044, title="Prochain Cours", type='rich')
+
+        events = cr.get_next_events(max=1)
+
+        if len(events) == 0:
+            resume = "Pas de prochain cours en vue! A toi le chômage! 🔥"
+            answer_embed.add_field(name="", value=resume, inline=False)
+
+        formated_events = format_events(events)
+        for formated_event in formated_events:
+            answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
+
+        answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API",
+        icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
+
+        # Adding a button
+        view = View()
+
+        # Sending the message
+        await interaction.followup.send(embed=answer_embed, view=view)
+
+    # Error occured in the slash command
+    except Exception as e:
+        print(e)
+        await interaction.followup.send(f"couldn't retrieve the calendar sorry :/", ephemeral=True)
+
+
+# Cours Demain
+@bot.tree.command(name="cours_demain", description="Quel est le programme de demain?")
+@app_commands.describe()
+
+async def cours_demain(interaction: discord.Interaction):
+    # Defer to not get kicked out
+    await interaction.response.defer(thinking=True)
+
+    try:
+        # Define the embed
+        answer_embed = discord.Embed(color=0xd55044, title="Cours Demain", type='rich')
+
+        events = cr.get_tomorrow_events()
+
+        resume = "Pas de cours demain, profite c'est pas tous les jours que ça arrive! 🍀"
+        if len(events) != 0:
+            resume = f"Au programme: {len(events)} cours demain 🤓"
+        answer_embed.add_field(name="", value=resume, inline=False)
+
+        formated_events = format_events(events)
+        for formated_event in formated_events:
+            answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
+
+        answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API",
+        icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
+
+        # Adding a button
+        view = View()
+
+        # Sending the message
+        await interaction.followup.send(embed=answer_embed, view=view)
 
     # Error occured in the slash command
     except Exception as e:
