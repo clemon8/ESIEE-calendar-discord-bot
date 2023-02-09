@@ -68,6 +68,23 @@ def format_events(events):
             result.append(current_event)
     return result
 
+def get_ade_export_datetime(events):
+    if len(events) == 0:
+        return datetime.datetime.now()
+    result = datetime.datetime.now() - datetime.timedelta(days=100)
+    for event in events:
+        if 'description' in event: 
+            info = event['description']
+            lines = info.splitlines()
+            if lines and lines[-1].startswith("ADE: (Exported"):
+                date_string = lines[-1][16:32]
+                date_format = "%d/%m/%Y %H:%M"
+                datetime_object = datetime.datetime.strptime(date_string, date_format)
+                result = max(datetime_object, result)
+    
+    return result
+
+
 # Bot Event
 @bot.event
 async def on_ready():
@@ -109,8 +126,10 @@ async def cours_aujourdhui(interaction: discord.Interaction):
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
-        answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API",
+        answer_embed.set_footer(text="Powered by Google Calendar API",
         icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
+
+        answer_embed.timestamp = get_ade_export_datetime(events)
 
         # Adding a button
         view = View()
@@ -150,6 +169,8 @@ async def prochains_cours_aujourdhui(interaction: discord.Interaction):
         answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API",
         icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
 
+        answer_embed.timestamp = get_ade_export_datetime(events)
+
         # Adding a button
         view = View()
 
@@ -188,6 +209,8 @@ async def prochain_cours(interaction: discord.Interaction):
         answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API",
         icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
 
+        answer_embed.timestamp = get_ade_export_datetime(events)
+
         # Adding a button
         view = View()
 
@@ -225,6 +248,8 @@ async def cours_demain(interaction: discord.Interaction):
 
         answer_embed.set_footer(text="ESIEE Calendar powered by Google Calendar API",
         icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
+
+        answer_embed.timestamp = get_ade_export_datetime(events)
 
         # Adding a button
         view = View()
