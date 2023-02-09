@@ -16,6 +16,8 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 import calendar_requests as cr
+import customization as cz
+import filter_per_role as fr
 
 bot = commands.Bot(command_prefix='/', intents = discord.Intents.all())
 
@@ -43,7 +45,7 @@ def clean_calendar_description(description):
     return description
 
 
-def format_events(events):
+def format_events(events, interaction):
     result = []
     for event in events:
             start = event['start']['dateTime']
@@ -51,6 +53,7 @@ def format_events(events):
             end = event['end']['dateTime']
             end_hour = (datetime.datetime.strptime(end, '%Y-%m-%dT%H:%M:%S%z')).strftime('%H:%M')
             name = event['summary']
+            emoji = cz.get_class_emoji(name)
 
             if 'location' in event: classe = event['location']
             else: classe = ''
@@ -58,10 +61,15 @@ def format_events(events):
             if 'description' in event: info = clean_calendar_description(event['description'])
             else: info = ''
 
+            # check if english class
+            if len(info.splitlines()) > 6:
+                english_group = fr.get_english_role(fr.get_command_user_roles(interaction))
+                info = fr.get_english_group_specific_info(info, english_group)
+
             value = info + '\n' + classe
 
             current_event = {
-                "name": f"{start_hour} - {end_hour}: {name}",
+                "name": f"{start_hour} - {end_hour}: {emoji} {name}",
                 "value": value
             }
 
@@ -122,7 +130,7 @@ async def cours_aujourdhui(interaction: discord.Interaction):
             resume = f"{len(events)} cours aujourd'hui 📚"
         answer_embed.add_field(name="", value=resume, inline=False)
 
-        formated_events = format_events(events)
+        formated_events = format_events(events, interaction)
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
@@ -162,7 +170,7 @@ async def prochains_cours_aujourdhui(interaction: discord.Interaction):
             resume = f"Encore {len(events)} cours aujourd'hui 📚"
         answer_embed.add_field(name="", value=resume, inline=False)
 
-        formated_events = format_events(events)
+        formated_events = format_events(events, interaction)
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
@@ -202,7 +210,7 @@ async def prochain_cours(interaction: discord.Interaction):
             resume = "Pas de prochain cours en vue! A toi le chômage! 🔥"
             answer_embed.add_field(name="", value=resume, inline=False)
 
-        formated_events = format_events(events)
+        formated_events = format_events(events, interaction)
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
@@ -242,7 +250,7 @@ async def cours_demain(interaction: discord.Interaction):
             resume = f"Au programme: {len(events)} cours demain 🤓"
         answer_embed.add_field(name="", value=resume, inline=False)
 
-        formated_events = format_events(events)
+        formated_events = format_events(events, interaction)
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
