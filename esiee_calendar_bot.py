@@ -1,19 +1,11 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ui import Button, View
 import json
 
 import datetime
-import os.path
-import unicodedata
-import requests
-
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+import asyncio
 
 import calendar_requests as cr
 import customization as cz
@@ -93,6 +85,25 @@ def get_ade_export_datetime(events):
     return result
 
 
+async def schedule_daily_message():
+    print("boom")
+    counter = 0
+    while True:
+        now = datetime.datetime.now()
+        then = now+datetime.timedelta(minutes=1)
+        then = then.replace(second=0, microsecond=0)
+        wait_time = (then-now).total_seconds()
+        print(wait_time)
+        print(then)
+        await asyncio.sleep(wait_time)
+        counter += 1
+        #if counter == 1:
+            #then = now+datetime.timedelta(days=1)
+
+        print(f"sending message number {counter}")
+        channel = bot.get_channel(1074060824425017475)
+        await channel.send("Good morning!!")
+
 # Bot Event
 @bot.event
 async def on_ready():
@@ -100,6 +111,8 @@ async def on_ready():
 
     This function syncs the bot commands and print if he initialised well
     """
+
+    await schedule_daily_message()
 
     print("Ready to give some dates 0_o")
     try:
@@ -109,7 +122,6 @@ async def on_ready():
 
     except Exception as e:
         print(e)
-
 
 # Cours du jour
 @bot.tree.command(name="aujourdhui", description="Qu'est ce qu'on a au menu aujourd'hui?")
