@@ -111,7 +111,7 @@ def get_ade_export_datetime(events):
     return result
 
 
-async def daily_aujourdhui(channel_id = 1074060824425017475):
+async def daily_aujourdhui(channel_id = 1073996004996681839):
 
     channel = bot.get_channel(channel_id)
 
@@ -157,13 +157,15 @@ async def daily_aujourdhui(channel_id = 1074060824425017475):
 async def schedule_daily_message():
     while True:
         now = datetime.datetime.now()
-        then = now+datetime.timedelta(minutes=1)
-        then = then.replace(second=0, microsecond=0)
+        then = now+datetime.timedelta(days=1)
+        then = then.replace(hour=6, minute=0 ,second=0, microsecond=0)
+        #then = now+datetime.timedelta(minutes=1)
+        #then = then.replace(second=0, microsecond=0)
         wait_time = (then-now).total_seconds()
         print(f"next daily message at: {then}")
         await asyncio.sleep(wait_time)
 
-        channel_id = 1074060824425017475
+        channel_id = 1073996004996681839
         await daily_aujourdhui(channel_id)
 
 # Bot Event
