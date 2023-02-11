@@ -5,6 +5,7 @@ from discord.ui import Button, View
 import json
 
 import datetime
+import locale
 import asyncio
 
 import calendar_requests as cr
@@ -30,6 +31,30 @@ def get_bot_token():
         token = config_data['discord_token']
     return token
 
+def get_last_daily_message_id():
+    """Gets the last daily message id
+
+    This function returns the the last daily message id stored in the `temp.json` file
+    """
+    with open('temp.json') as f:
+        config_data = json.load(f)
+        id = config_data['last_daily_message_id']
+    return id
+
+def update_last_daily_message_id(new_id: int):
+    """Updates the last daily message id
+
+    This function takes an integer parameter `new_id` and overwrites the last daily message id
+    stored in the `temp.json` file with it
+    """
+    with open('temp.json', 'r') as f:
+        config_data = json.load(f)
+
+    config_data['last_daily_message_id'] = new_id
+
+    with open('temp.json', 'w') as f:
+        json.dump(config_data, f)
+
 def clean_calendar_description(description):
     lines = description.splitlines()
     if lines and lines[-1].startswith("ADE: (Exported"):
@@ -37,7 +62,7 @@ def clean_calendar_description(description):
     return description
 
 
-def format_events(events, interaction):
+def format_events(events, interaction = None, custom_roles=False):
     result = []
     for event in events:
             start = event['start']['dateTime']
@@ -53,10 +78,11 @@ def format_events(events, interaction):
             if 'description' in event: info = clean_calendar_description(event['description'])
             else: info = ''
 
+            if custom_roles:
             # check if english class
-            if len(info.splitlines()) > 6:
-                english_group = fr.get_english_role(fr.get_command_user_roles(interaction))
-                info = fr.get_english_group_specific_info(info, english_group)
+                if len(info.splitlines()) > 6:
+                    english_group = fr.get_english_role(fr.get_command_user_roles(interaction))
+                    info = fr.get_english_group_specific_info(info, english_group)
 
             value = info + '\n' + classe
 
@@ -85,24 +111,60 @@ def get_ade_export_datetime(events):
     return result
 
 
+async def daily_aujourdhui(channel_id = 1074060824425017475):
+
+    channel = bot.get_channel(channel_id)
+
+    # Change previous message
+    previous_message_id = get_last_daily_message_id()
+    if previous_message_id != 0:
+        previous_message = await channel.fetch_message(previous_message_id)
+        embed = previous_message.embeds[0]
+
+        yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+        locale.setlocale(locale.LC_ALL, 'fr_FR.utf8')
+        formatted_date = yesterday.strftime("%A %d %B %Y")
+        embed.title = formatted_date
+        await previous_message.edit(embed=embed)
+
+    # Define the embed
+    answer_embed = discord.Embed(color=0xd55044, title="Aujourd'hui", type='rich')
+
+    events = cr.get_today_events()
+
+    resume = "Pas de cours aujourd'hui 💤"
+    if len(events) != 0:
+        resume = f"{len(events)} cours aujourd'hui 📚"
+    answer_embed.add_field(name="", value=resume, inline=False)
+
+    formated_events = format_events(events, None, False)
+    for formated_event in formated_events:
+        answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
+
+    answer_embed.set_footer(text="Powered by Google Calendar API",
+    icon_url='https://raw.githubusercontent.com/clemon8/ESIEE-calendar-discord-bot/main/src/esiee_calendar_icon.png')
+
+    answer_embed.timestamp = get_ade_export_datetime(events)
+
+    # Sending the message
+    
+    sent_message = await channel.send(embed=answer_embed)
+
+    sent_message_id = sent_message.id
+    update_last_daily_message_id(sent_message_id)
+
+
 async def schedule_daily_message():
-    print("boom")
-    counter = 0
     while True:
         now = datetime.datetime.now()
         then = now+datetime.timedelta(minutes=1)
         then = then.replace(second=0, microsecond=0)
         wait_time = (then-now).total_seconds()
-        print(wait_time)
-        print(then)
+        print(f"next daily message at: {then}")
         await asyncio.sleep(wait_time)
-        counter += 1
-        #if counter == 1:
-            #then = now+datetime.timedelta(days=1)
 
-        print(f"sending message number {counter}")
-        channel = bot.get_channel(1074060824425017475)
-        await channel.send("Good morning!!")
+        channel_id = 1074060824425017475
+        await daily_aujourdhui(channel_id)
 
 # Bot Event
 @bot.event
@@ -142,7 +204,7 @@ async def cours_aujourdhui(interaction: discord.Interaction):
             resume = f"{len(events)} cours aujourd'hui 📚"
         answer_embed.add_field(name="", value=resume, inline=False)
 
-        formated_events = format_events(events, interaction)
+        formated_events = format_events(events, interaction, True)
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
@@ -182,7 +244,7 @@ async def prochains_cours_aujourdhui(interaction: discord.Interaction):
             resume = f"Encore {len(events)} cours aujourd'hui 📚"
         answer_embed.add_field(name="", value=resume, inline=False)
 
-        formated_events = format_events(events, interaction)
+        formated_events = format_events(events, interaction, True)
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
@@ -222,7 +284,7 @@ async def prochain_cours(interaction: discord.Interaction):
             resume = "Pas de prochain cours en vue! A toi le chômage! 🔥"
             answer_embed.add_field(name="", value=resume, inline=False)
 
-        formated_events = format_events(events, interaction)
+        formated_events = format_events(events, interaction, True)
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
@@ -262,7 +324,7 @@ async def cours_demain(interaction: discord.Interaction):
             resume = f"Au programme: {len(events)} cours demain 🤓"
         answer_embed.add_field(name="", value=resume, inline=False)
 
-        formated_events = format_events(events, interaction)
+        formated_events = format_events(events, interaction, True)
         for formated_event in formated_events:
             answer_embed.add_field(name=formated_event['name'], value=formated_event['value'], inline=False)
 
